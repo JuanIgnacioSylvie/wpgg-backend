@@ -10,10 +10,10 @@ const riotRoutes = require('./routes/riotRoutes');
 // Middleware para parsear JSON
 app.use(express.json());
 
-// Prefijo /api/riot
+// Asignamos las rutas bajo el prefijo /api/riot
 app.use('/api/riot', riotRoutes);
 
-// Raíz
+// Endpoint raíz
 app.get('/', (req, res) => {
   res.send('Bienvenido a la API de WPGG!');
 });
