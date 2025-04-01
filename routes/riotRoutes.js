@@ -97,20 +97,26 @@ router.get('/profile-account/:puuid', async (req, res) => {
         );
         const data = response.data;
 
-        const profileAccountDto = new ProfileAccountDto({
+        // Then build your DTO or just return data directly
+        const profileAccountDto = {
+            id: data.id,
+            accountId: data.accountId,
             puuid: data.puuid,
-            gameName: summonerName,
-            tagLine: data.tagLine || '',
+            revisionDate: data.revisionDate,
             profileIconId: data.profileIconId,
-            summonerLevel: data.summonerLevel,
-        });
+            summonerLevel: data.summonerLevel
+        };
 
         res.json(profileAccountDto);
     } catch (error) {
-        console.error('Error al obtener perfil de cuenta:', error.response ? error.response.data : error.message);
+        console.error(
+            'Error al obtener perfil de cuenta:',
+            error.response ? error.response.data : error.message
+        );
         res.status(500).json({ error: 'Error al obtener perfil de cuenta' });
     }
 });
+
 
 // Funciones de ayuda
 async function getAccountDtoByPuuid(puuid, apiKey) {
