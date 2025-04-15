@@ -1,5 +1,5 @@
 class ProfileAccountDto {
-    constructor({ puuid, gameName, tagLine, profileIconId, summonerLevel }) {
+    constructor({ id, accountId, puuid, revisionDate, profileIconId, summonerLevel }) {
         this.id = id;
         this.accountId = accountId;
         this.puuid = puuid;

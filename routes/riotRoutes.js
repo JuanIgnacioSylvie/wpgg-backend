@@ -1,4 +1,3 @@
-// routes/riotRoutes.js
 require('dotenv').config();
 const express = require('express');
 const router = express.Router();
@@ -9,6 +8,10 @@ const AccountDto = require('../dtos/account.dto');
 const ParticipantDto = require('../dtos/participant.dto');
 const MatchSummaryDto = require('../dtos/matchSummary.dto');
 const ProfileAccountDto = require('../dtos/profile.dto');
+const SummonerSpellsDto = require('../dtos/summonerSpells.dto');
+const BuildDto = require('../dtos/build.dto');
+const GameModeDto = require('../dtos/gameMode.dto');
+const { QUEUE_DATA } = require('../dtos/queuedata.js');
 
 /**
  * GET /api/riot/test
@@ -37,7 +40,6 @@ router.get('/account/:puuid', async (req, res) => {
         res.status(500).json({ error: 'Error al obtener la cuenta por puuid' });
     }
 });
-
 
 router.get('/profile/:gameName/:tagLine', async (req, res) => {
     const { gameName } = req.params;
@@ -85,7 +87,7 @@ router.get('/matches/:puuid', async (req, res) => {
 });
 
 /**
- * GET /api/riot/profile-account/:summonerName
+ * GET /api/riot/profile-account/:puuid
  */
 router.get('/profile-account/:puuid', async (req, res) => {
     const { puuid } = req.params;
@@ -97,28 +99,43 @@ router.get('/profile-account/:puuid', async (req, res) => {
         );
         const data = response.data;
 
-        // Then build your DTO or just return data directly
-        const profileAccountDto = {
+        const profileAccountDto = new ProfileAccountDto({
             id: data.id,
             accountId: data.accountId,
             puuid: data.puuid,
-            revisionDate: data.revisionDate,
             profileIconId: data.profileIconId,
-            summonerLevel: data.summonerLevel
-        };
+            revisionDate: data.revisionDate,
+            summonerLevel: data.summonerLevel,
+        });
 
         res.json(profileAccountDto);
     } catch (error) {
-        console.error(
-            'Error al obtener perfil de cuenta:',
-            error.response ? error.response.data : error.message
-        );
+        console.error('Error al obtener perfil de cuenta:', error.response ? error.response.data : error.message);
         res.status(500).json({ error: 'Error al obtener perfil de cuenta' });
     }
 });
 
-
+// --------------------------------------------------------------------------------
 // Funciones de ayuda
+// --------------------------------------------------------------------------------
+
+/**
+ * Dado un queueId, busca la información en QUEUE_DATA y retorna un GameModeDto.
+ * Si no existe, retorna un objeto con valores por defecto.
+ */
+function getGameModeDtoByQueueId(queueId) {
+    const found = QUEUE_DATA.find((mode) => mode.queueId === queueId);
+    if (!found) {
+        return new GameModeDto({
+            queueId,
+            map: 'Unknown',
+            description: null,
+            notes: null,
+        });
+    }
+    return new GameModeDto(found);
+}
+
 async function getAccountDtoByPuuid(puuid, apiKey) {
     try {
         const response = await axios.get(
@@ -148,7 +165,26 @@ async function getAccountDtoByGameName(gameName, tagLine, apiKey) {
             tagLine: data.tagLine,
         });
     } catch (error) {
-        console.error(`Error fetching account by puuid ${puuid}:`, error.response ? error.response.data : error.message);
+        console.error(`Error fetching account by puuid ${gameName}:`, error.response ? error.response.data : error.message);
+        return null;
+    }
+}
+
+async function getProfileDtoByPuuid(puuid, apiKey) {
+    try {
+        const response = await axios.get(
+            `https://la2.api.riotgames.com/lol/summoner/v4/summoners/by-puuid/${encodeURIComponent(puuid)}?api_key=${apiKey}`
+        );
+        const data = response.data;
+        return new ProfileAccountDto({
+            puuid: data.puuid,
+            gameName: data.name,
+            tagLine: '', // No se provee tagLine en este endpoint
+            profileIconId: data.profileIconId,
+            summonerLevel: data.summonerLevel,
+        });
+    } catch (error) {
+        console.error(`Error fetching profile for puuid ${puuid}:`, error.response ? error.response.data : error.message);
         return null;
     }
 }
@@ -156,6 +192,26 @@ async function getAccountDtoByGameName(gameName, tagLine, apiKey) {
 async function enrichParticipant(participant, apiKey) {
     if (!participant || !participant.puuid) return null;
     const accountDto = await getAccountDtoByPuuid(participant.puuid, apiKey);
+
+    const summonerSpellsDto = new SummonerSpellsDto({
+        summoner1Id: participant.summoner1Id,
+        summoner2Id: participant.summoner2Id,
+        summoner1Casts: participant.summoner1Casts,
+        summoner2Casts: participant.summoner2Casts
+    });
+
+    const buildDto = new BuildDto({
+        item0: participant.item0,
+        item1: participant.item1,
+        item2: participant.item2,
+        item3: participant.item3,
+        item4: participant.item4,
+        item5: participant.item5,
+        item6: participant.item6,
+        itemsPurchased: participant.itemsPurchased,
+        goldSpent: participant.goldSpent
+    });
+
     return new ParticipantDto({
         championName: participant.championName,
         kills: participant.kills,
@@ -164,19 +220,28 @@ async function enrichParticipant(participant, apiKey) {
         goldEarned: participant.goldEarned,
         win: participant.win,
         accountDto,
+        summonerSpellsDto,
+        buildDto
     });
 }
 
+/**
+ * Toma la data cruda de un match y retorna un MatchSummaryDto,
+ * adjuntando la información detallada del modo de juego a partir del queueId.
+ */
 async function parseMatchSummary(matchData, apiKey) {
     const enrichedParticipants = await Promise.all(
         matchData.info.participants.map(p => enrichParticipant(p, apiKey))
     );
 
+    // Obtenemos nuestro GameModeDto a partir del queueId
+    const gameModeDto = getGameModeDtoByQueueId(matchData.info.queueId);
+
     return new MatchSummaryDto({
         matchId: matchData.metadata.matchId,
-        gameMode: matchData.info.gameMode,
         gameDuration: matchData.info.gameDuration,
         participants: enrichedParticipants.filter(p => p !== null),
+        gameModeDto
     });
 }
 
